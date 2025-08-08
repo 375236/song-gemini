@@ -1,57 +1,67 @@
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // 1. Импортируем плагин
 import '../services/song_service.dart';
 
-class SongViewScreen extends StatelessWidget {
+// 2. Превращаем в StatefulWidget
+class SongViewScreen extends StatefulWidget {
   final Song song;
 
   const SongViewScreen({super.key, required this.song});
 
-  // Эта функция определяет, является ли строка строкой с аккордами
+  @override
+  State<SongViewScreen> createState() => _SongViewScreenState();
+}
+
+class _SongViewScreenState extends State<SongViewScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 3. ВКЛЮЧАЕМ режим "не спать" при открытии экрана
+    WakelockPlus.enable();
+    print("Wakelock enabled");
+  }
+
+  @override
+  void dispose() {
+    // 4. ВЫКЛЮЧАЕМ режим "не спать" при закрытии экрана
+    WakelockPlus.disable();
+    print("Wakelock disabled");
+    super.dispose();
+  }
+
+  // --- Весь остальной код остаётся без изменений ---
+
   bool _isChordLine(String line) {
     if (line.trim().isEmpty) return false;
-
-    // Этот паттерн ищет строки, которые похожи на аккорды
     final chordPattern = RegExp(
       r'^[A-G][#b]?(m|maj|min|dim|aug|sus|add)?[0-9]?\s*',
     );
-
-    // Дополнительная проверка: в строке с аккордами почти нет строчных букв
     final lowerCaseLetters = line.replaceAll(RegExp(r'[^a-z]'), '').length;
     final upperCaseLetters = line.replaceAll(RegExp(r'[^A-Z]'), '').length;
-
-    // Считаем строкой аккордов, если она подходит под паттерн
-    // и в ней мало или совсем нет строчных букв
     return chordPattern.hasMatch(line.trim()) &&
         (lowerCaseLetters < 2 || lowerCaseLetters < upperCaseLetters);
   }
 
   @override
   Widget build(BuildContext context) {
-    // --- ДОБАВЬТЕ ЭТИ СТРОКИ ДЛЯ ОТЛАДКИ ---
-    print("--- Отладка Экрана Песни ---");
-    print("Название: ${song.title}");
-    print("Текст с аккордами: [${song.textWithChords}]");
-    // -----------------------------------------
-    final lines = song.textWithChords.split('\n');
+    // Используем widget.song, чтобы получить доступ к песне из StatefulWidget
+    final lines = widget.song.textWithChords.split('\n');
 
     return Scaffold(
-      appBar: AppBar(title: Text(song.title)),
+      appBar: AppBar(title: Text(widget.song.title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.stretch, // Растягиваем строки по ширине
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: lines.map((line) {
             final isChord = _isChordLine(line);
             return Text(
               line,
               style: TextStyle(
-                fontFamily:
-                    'RobotoMono', // Используем моноширинный шрифт для аккордов
                 fontWeight: isChord ? FontWeight.bold : FontWeight.normal,
                 color: isChord ? Theme.of(context).primaryColor : Colors.black,
                 fontSize: 15,
-                height: 1.3, // Межстрочный интервал
+                height: 1.3,
               ),
             );
           }).toList(),
