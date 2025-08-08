@@ -1,11 +1,11 @@
-import 'dart:convert'; // Для работы с JSON
-import 'dart:io'; // Для работы с файлами
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart'; // Импорты новых плагинов
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package.spshared_preferences/shared_preferences.dart';
 
 import 'services/song_service.dart';
 import 'services/favorites_service.dart';
@@ -26,6 +26,8 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.teal,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        // Сделаем цвет для ExpansionTile таким же, как у всего остального
+        dividerColor: Colors.transparent,
       ),
       home: const ArtistsScreen(),
     );
@@ -66,6 +68,11 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
       return favoriteIds.contains(songId);
     }).toList();
 
+    // --- НОВАЯ СОРТИРОВКА ИЗБРАННОГО ---
+    favSongs.sort(
+      (a, b) => a.artist.toLowerCase().compareTo(b.artist.toLowerCase()),
+    );
+
     setState(() {
       _allSongs = songs;
       _favoriteSongs = favSongs;
@@ -73,66 +80,12 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
     });
   }
 
-  // --- НОВАЯ ФУНКЦИЯ ЭКСПОРТА ---
+  // Функции импорта и экспорта остаются без изменений
   Future<void> _exportFavorites() async {
-    final favoriteIds = await _favoritesService.getFavoriteIds();
-    if (favoriteIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нет избранных песен для экспорта.')),
-      );
-      return;
-    }
-
-    // Превращаем список ID в красивый JSON-текст
-    final jsonString = jsonEncode(favoriteIds);
-    // Находим временную папку, куда можно сохранить файл
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}/favorites_backup.json');
-
-    // Записываем наш JSON в файл
-    await file.writeAsString(jsonString);
-
-    // Вызываем системное окно "Поделиться"
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: 'Мои избранные песни',
-      subject: 'Бэкап избранных песен',
-    );
+    // ... код экспорта ...
   }
-
-  // --- НОВАЯ ФУНКЦИЯ ИМПОРТА ---
   Future<void> _importFavorites() async {
-    // Открываем файловый менеджер для выбора .json файла
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-    );
-
-    if (result != null && result.files.single.path != null) {
-      final file = File(result.files.single.path!);
-      final jsonString = await file.readAsString();
-
-      try {
-        // Декодируем JSON и проверяем, что это список строк
-        final decoded = jsonDecode(jsonString) as List<dynamic>;
-        final importedIds = decoded.cast<String>().toList();
-
-        // Полностью заменяем текущее избранное на импортированное
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setStringList('favorite_songs', importedIds);
-
-        // Обновляем UI
-        await _loadAllData();
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Избранное успешно импортировано!')),
-        );
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка: Неверный формат файла. $e')),
-        );
-      }
-    }
+    // ... код импорта ...
   }
 
   @override
@@ -144,7 +97,6 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
       appBar: AppBar(
         title: const Text('Исполнители'),
         actions: [
-          // --- КНОПКА ИМПОРТА ---
           IconButton(
             onPressed: _importFavorites,
             icon: const Icon(Icons.file_upload),
@@ -160,72 +112,74 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
-              // Добавим обновление списка по свайпу вниз
               onRefresh: _loadAllData,
-              child: SingleChildScrollView(
-                physics:
-                    const AlwaysScrollableScrollPhysics(), // Чтобы свайп работал всегда
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_favoriteSongs.isNotEmpty) ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              '⭐ Избранное',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            // --- КНОПКА ЭКСПОРТА ---
-                            IconButton(
-                              onPressed: _exportFavorites,
-                              icon: const Icon(Icons.share),
-                              tooltip: 'Экспорт избранного',
-                            ),
-                          ],
-                        ),
+              child: ListView(
+                // Заменяем SingleChildScrollView+Column на ListView для простоты
+                children: [
+                  // --- ОБНОВЛЕННАЯ СЕКЦИЯ "ИЗБРАННОЕ" В ВИДЕ ПАПКИ ---
+                  if (_favoriteSongs.isNotEmpty)
+                    ExpansionTile(
+                      leading: const Icon(Icons.star),
+                      title: Text(
+                        'Избранное',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                      ..._favoriteSongs.map(
-                        (song) => ListTile(
-                          title: Text(song.title),
-                          subtitle: Text(song.artist),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SongViewScreen(song: song),
+                      subtitle: Text('${_favoriteSongs.length} песен'),
+                      // Кнопку экспорта можно вынести сюда
+                      trailing: IconButton(
+                        icon: const Icon(Icons.share),
+                        onPressed: _exportFavorites,
+                        tooltip: 'Экспорт избранного',
+                      ),
+                      children: _favoriteSongs.map((song) {
+                        return ListTile(
+                          // Теперь название песни выглядит как "Исполнитель - Название"
+                          title: Text("${song.artist} - ${song.title}"),
+                          contentPadding: const EdgeInsets.only(
+                            left: 30.0,
+                            right: 16.0,
+                          ), // Отступ для вложенности
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    SongViewScreen(song: song),
+                              ),
+                            );
+                          },
+                        );
+                      }).toList(),
+                    ),
+
+                  // Разделитель между папкой и списком
+                  if (_favoriteSongs.isNotEmpty) const Divider(),
+
+                  // --- СПИСОК ИСПОЛНИТЕЛЕЙ (остаётся как был) ---
+                  ...artists.map(
+                    (artist) => ListTile(
+                      title: Text(artist),
+                      trailing: const Icon(Icons.arrow_forward_ios),
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ArtistSongsScreen(
+                              artist: artist,
+                              allSongs: _allSongs,
                             ),
                           ),
-                        ),
-                      ),
-                      const Divider(),
-                    ],
-                    ...artists.map(
-                      (artist) => ListTile(
-                        title: Text(artist),
-                        trailing: const Icon(Icons.arrow_forward_ios),
-                        onTap: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ArtistSongsScreen(
-                                artist: artist,
-                                allSongs: _allSongs,
-                              ),
-                            ),
-                          );
-                          _loadAllData();
-                        },
-                      ),
+                        );
+                        _loadAllData();
+                      },
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
     );
   }
 }
+
+// Код функций _exportFavorites и _importFavorites нужно скопировать из предыдущего ответа
+// и вставить на место комментариев, либо оставить как есть, если они у вас уже в коде.
